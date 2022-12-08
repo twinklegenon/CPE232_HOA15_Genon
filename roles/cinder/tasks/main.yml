@@ -1,0 +1,168 @@
+---
+### Install and configure components (controller node)
+
+- name: install the packages for cinder (1) controller node
+  apt:
+    name: cinder-api
+
+- name: install cinder scheduler
+  shell: sudo apt install cinder-scheduler
+
+- name: configure database access
+  copy:
+    dest: /etc/cinder/cinder.conf
+    content: |
+      [database]
+      connection = mysql+pymysql://cinder:1234@controller/cinder
+
+- name: configure RabbitMQ message queue access
+  copy:
+    dest: /etc/cinder/cinder.conf
+    content: |
+      [DEFAULT]
+      transport_url = rabbit://openstack:1234@controller
+
+- name: configure identity services access
+  copy:
+    dest: /etc/cinder/cinder.conf
+    content: |
+      [DEFAULT]
+      auth_strategy = keystone
+
+      [keystone_authtoken]
+      www_authenticate_uri = http://controller:5000
+      auth_url = http://controller:5000
+      memcached_servers = controller:11211
+      auth_type = password
+      project_domain_name = default
+      user_domain_name = default
+      project_name = service
+      username = cinder
+      password = 1234
+
+- name: configure my_ip option to use the management interface IP add of controller node
+  copy:
+    dest: /etc/cinder/cinder.conf
+    content: |
+      [DEFAULT]
+      my_ip = 192.168.56.119
+
+- name: configure the lock path
+  copy:
+    dest: /etc/cinder/cinder.conf
+    content: |
+      [oslo_concurrency]
+      lock_path = /var/lib/cinder/tmp
+
+- name: populate the block storage database
+  shell: su -s /bin/sh -c "cinder-manage db sync" cinder
+
+### COnfigure compute to use block storage
+
+- name: adding the following line for block storage
+  copy:
+    dest: /etc/nova/nova.conf
+    content: |
+      [cinder]
+      os_region_name = RegionOne
+
+- name: install nova-api
+  shell: sudo apt install nova-api
+
+- name: restarting the compute API service
+  shell: service nova-api start
+
+- name: restart the block storage services (1)
+  shell: service cinder-scheduler start
+
+- name: restart the block storage services (2)
+  shell: sudo systemctl start apache2
+
+ ## Install and configure components (Storage Node)
+
+- name: install the supporting utility packages
+  apt:
+    name:
+       - lvm2
+       - thin-provisioning-tools
+
+- name: create the LVM physical volume /dev/sdb
+  file:
+    path: /dev/sdb
+    state: directory
+
+- name: create the LVM volume group cinder-volume
+  shell: sudo touch cinder-volumes /dev/sdb
+
+## add a filter that accepts the /dev/sdb in /etc/lvm/lvm.conf
+
+- name: install the packages for cinder (2) storage node
+  apt:
+    name:
+       - cinder-volume
+       - tgt
+
+#configure database access
+#configure RabbitMQ message queue access
+#configure identity services access
+#configure the my_ip option
+
+- name: configure the LVM backend with the LVM driver
+  copy:
+    dest: /etc/cinder/cinder.conf
+    content: |
+      [lvm]
+      volume_driver = cinder.volume.drivers.lvm.LVMVolumeDriver
+      volume_group = cinder-volumes
+      target_protocol = iscsi
+      target_helper = tgtadm
+
+- name: enabling the LVM backend
+  copy:
+    dest: /etc/cinder/cinder.conf
+    content: |
+      [DEFAULT]
+      enabled_backends = lvm
+
+- name: configuring the location of the image service API
+  copy:
+    dest: /etc/cinder/cinder.conf
+    content: |
+      [DEFAULT]
+      glance_api_servers = http://controller:9292
+
+- name: configuring the lock path
+  copy:
+    dest: /etc/cinder/cinder.conf
+    content: |
+      [oslo_concurrency]
+      lock_path = /var/lib/cinder/tmp
+
+- name: Restarting the block storage volume service including its dependencies (1)
+  shell: service tgt restart
+
+- name: Restarting the block storage volume service including its dependencies (2)
+  shell: service cinder-volume restart
+
+## Install and configure components (Backup Service)
+
+- name: install the packages for cinder (3) backup service
+  apt:
+    name: cinder-backup
+
+- name: configuring the backup options
+  copy:
+    dest: /etc/cinder/cinder.conf
+    content: |
+      [DEFAULT]
+      backup_driver = cinder.backup.drivers.swift.SwiftBackupDriver
+      backup_swift_url = SWIFT_URL
+
+#- name: replacing the SWIFT_URL with the URL of the Object Service service
+#  shell: openstack catalog show object-store
+
+#finalize installation
+
+- name: restart the block storage backup service
+  shell: service cinder-backup start
+

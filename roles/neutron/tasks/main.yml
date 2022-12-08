@@ -1,0 +1,64 @@
+---
+### Install and configure neutron compute node
+
+- name: installing  the components for neutron
+  apt:
+    name: neutron-linuxbridge-agent
+  when: ansible_distribution == "Ubuntu"
+
+- name: configuring RabbitMQ message queue access
+  copy:
+    dest: /etc/neutron/neutron.conf
+    content: |
+      [DEFAULT]
+      transport_url = rabbit://openstack:1234@controller
+
+- name: configuring Identity service access (1)
+  copy:
+    dest: /etc/neutron/neutron.conf
+    content: |
+      [DEFAULT]
+      auth_strategy = keystone
+
+      [keystone_authtoken]
+      www_authenticate_uri = http://controller:5000
+      auth_url = http://controller:5000
+      memcached_servers = controller:11211
+      auth_type = password
+      project_domain_name = default
+      user_domain_name = default
+      project_name = service
+      username = neutron
+      password = 1234
+
+- name: configuring the lock path
+  copy:
+    dest: /etc/neutron/neutron.conf
+    content: |
+      [oslo_currency]
+      lock_path = /var/lib/neutron/tmp
+
+## Configuring the compute service to use networking service
+
+- name: configuring the access parameters
+  copy:
+    dest: /etc/nova/nova.conf
+    content: |
+      [neutron]
+      auth_url = http://controller:5000
+      auth_type = password
+      project_domain_name = default
+      user_domain_name = default
+      region_name = RegionOne
+      project_name = service
+      username = neutron
+      password = 1234
+
+- name: restarting the compute service
+  shell: service nova-compute restart
+  when: ansible_distribution == "Ubuntu"
+
+- name: restarting the linux bridge agent
+  shell: service neutron-linuxbridge-agent restart
+  when: ansible_distribution == "Ubuntu"
+

@@ -1,0 +1,113 @@
+---
+##Install and configure horizon for Ubuntu
+#- name: Installing the packages for horizon
+#  apt:
+#    name: openstack-dashboard
+#  when: ansible_distribution == "Ubuntu"
+
+- name: configuring the dashboard to use Openstack services
+  copy:
+    dest: /etc/openstack-dashboard/local_settings.py
+    content: |
+      OPENSTACK_HOST = "controller"
+
+- name: Allowing all hosts to access dashboard
+  copy:
+    dest: /etc/openstack-dashboard/local_settings.py
+    content: |
+      ALLOWED_HOSTS = ['*']
+
+- name: configure the memcached session storage service
+  copy:
+    dest: /etc/openstack-dashboard/local_settings.py
+    content: |
+      SESSION_ENGINE = 'django.contrib.sessions.backends.cache'
+
+      CACHES = {
+          'default': {
+               'BACKEND': 'django.core.cache.backends.memcached.MemcachedCache', 'LOCATION': 'controller:11211',
+               }
+               }
+
+- name: enable the identity API version 3
+  copy:
+    dest: /etc/openstack-dashboard/local_settings.py
+    content: |
+      OPENSTACK_KEYSTONE_URL = "http://%s/identity/v3" % OPENSTACK_HOST
+
+- name: enable support for domains
+  copy:
+    dest: /etc/openstack-dashboard/local_settings.py
+    content: |
+      OPENSTACK_KEYSTONE_MULTIDOMAIN_SUPPORT = True
+
+- name: configure API versions
+  copy:
+    dest: /etc/openstack-dashboard/local_settings.py
+    content: |
+      OPENSTACK_API_VERSIONS = {
+          "identity": 3,
+          "image": 2,
+          "volume": 3,
+      }
+
+- name: configure default as the default domain for users that you create via the dashboard
+  copy:
+    dest: /etc/openstack-dashboard/local_settings.py
+    content: |
+      OPENSTACK_KEYSTONE_DEFAULT_DOMAIN = "Default"
+
+- name: configure user as the default role for users that your create via the dashboard
+  copy:
+    dest: /etc/openstack-dashboard/local_settings.py
+    content: |
+      OPENSTACK_KEYSTONE_DEFAULT_ROLE = "user"
+
+- name: if you choose network 1, disable support for layer-3 networking services
+  copy:
+    dest: /etc/openstack-dashboard/local_settings.py
+    content: |
+      OPENSTACK_NEUTRON_NETWORK = {
+          'enable_router': False,
+          'enable_quotas': False,
+          'enable_ipv6': False,
+          'enable_distributed_router': False,
+          'enable_ha_router': False,
+          'enable_fip_topology_check': False
+      }
+
+
+- name: add the following line if not added yet
+  copy:
+    dest: /etc/openstack-dashboard/local_settings.py
+    content: |
+      CACHES = {
+          'default': {
+              'BACKEND': 'django.core.cache.backends.memcached.MemcachedCache', 'LOCATION': 192.168.56.124:11211',
+              },
+              }
+      SESSION_ENGINE = "django.contrib.sessions.backends.cache"
+      OPENSTACK_HOST = "192.168.56.124"
+      OPENSTACK_KEYSTONE_URL = "http://%s/identity/v3" % OPENSTACK_HOST
+      OPENSTACK_KEYSTONE_URL = "http://192.168.56.124:5000/v3"
+      
+      TIME_ZONE = "Asia/Tokyo"
+      
+      OPENSTACK_KEYSTONE_MULTIDOMAIN_SUPPORT = True
+      OPENSTACK_KEYSTONE_DEFAULT_DOMAIN = 'Default'
+      OPENSTACK_API_VERSIONS = {
+          "identity": 3,
+          "volume": 3,
+          "compute": 2,
+      }     
+      WSGIApplicationGroup %{GLOBAL}
+
+- name: install apache2
+  apt:
+    name: apache2
+
+- name: finalize installation by starting the apache2 service
+  shell: sudo systemctl reload apache2.service
+
+- name: finalize installation by reloading the apache2 service
+  shell: sudo systemctl reload apache2.service
